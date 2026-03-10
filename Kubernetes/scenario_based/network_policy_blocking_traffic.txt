@@ -1,3 +1,51 @@
 4. A network policy is blocking traffic between services in different namespaces. How would you design and debug the policy to allow only specific communication paths?
 Ans:
-    
+    What is a NetworkPolicy?
+
+        A NetworkPolicy is a Kubernetes object that controls:
+        Who can talk to whom
+        At pod level
+        Using labels
+        👉 By default:
+        All pods can talk to all pods
+        Once a NetworkPolicy is applied → traffic becomes restricted
+
+        NetworkPolicies are DENY-ALL by default once applied
+
+        If even one NetworkPolicy selects a pod:
+        All traffic is blocked
+        Only explicitly allowed traffic works
+
+    Solution:
+        1. Check if Network policy exists.
+        2. Check for the labels and config the network policy is allowing.
+        3. Check the labels on namespace as well as pods.
+        4. Policy needs to be created in namespace where the pods exists.
+        5. network policies work only if CNI supports them.
+        6. Also check egress rules along with ingress rules.
+
+
+    Example network policy applied in backend namespace:
+
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+        name: allow-frontend-to-backend
+        namespace: backend
+        spec:
+        podSelector:
+            matchLabels:
+            app: backend
+        policyTypes:
+        - Ingress
+        ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                name: frontend
+            podSelector:
+                matchLabels:
+                app: frontend
+            ports:
+            - protocol: TCP
+            port: 8080
