@@ -1,0 +1,3 @@
+4. A network policy is blocking traffic between services in different namespaces. How would you design and debug the policy to allow only specific communication paths?
+Ans:
+    

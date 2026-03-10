@@ -1,0 +1,26 @@
+3. Your cluster autoscaler is not scaling up even though pods are in Pending state. What would you investigate?
+Ans:
+    ## What is Cluster Autoscaler?
+
+    Cluster Autoscaler (CA):
+    Adds new nodes when pods cannot be scheduled
+    Removes nodes when they are underutilized
+
+    👉 Important:
+    Cluster Autoscaler does NOT look at CPU usage
+    It only looks at unschedulable pods
+
+    # Pending pod means kubernetes cannot find a node to place it, but always all pods are not scheduleable or trigger autoscaling.
+
+    Reasons:
+
+    1. If pod has a node-selector attached, but there is no node with this label.Autoscaler will not create nodes with custom labels unless configured.
+    2. If node has taint attached and pod has no toleration attached, it will not be scheduleable.
+    3. Check PersistentVolume issues
+    4. Check Cluster Autoscaler logs
+    5. Check node group limits, autoscalercannit scale above its maximum limit attached.
+    6. Check resource requests in pod, it should be something that autoscaler can actually support.
+    7. Check autoscaler permissions. as it requires permissions to create instances and modify node groups.
+    8. Check if autoscaler is running correctly.
+    
+

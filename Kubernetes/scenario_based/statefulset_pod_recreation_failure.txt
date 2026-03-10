@@ -1,0 +1,54 @@
+2. You have a StatefulSet deployed with persistent volumes, and one of the pods is not recreating properly after deletion. What could be the reasons, and how do you fix it without data loss?
+Ans:
+    ## What is a StatefulSet?
+
+    A StatefulSet is used when pods need:
+    Stable pod names (e.g. db-0, db-1)
+    Stable storage
+    Ordered startup and shutdown
+
+    ## When we delete a statefulset pod:
+
+    Recreates the same pod name → mysql-1
+    Reattaches the same PersistentVolumeClaim (PVC)
+    Data is NOT deleted
+
+    So if it does NOT recreate properly, something is wrong with storage, scheduling, or ordering.
+
+    ## Common reasons.
+
+    1. PVC is stuck or not bound
+    --> 
+        Why this happens
+
+        StorageClass misconfigured
+        No available PersistentVolumes
+        Wrong access mode (ReadWriteOnce)
+
+    2. Pod is waiting for previous pod
+    -->  As we said there is ordered startup and shutdown , so if previous pod is not ready the next will be pending.
+
+    3. Volume is still attached to another node
+    -- >
+        Persistent volumes can be attached to only one node (especially cloud disks).
+
+        If:
+        Pod was running on Node A
+        Node A is slow or NotReady
+        Volume is still attached
+        Then new pod cannot mount it.
+
+        Fix (safe):
+        Wait for volume detachment
+        Or manually detach volume from cloud console
+        Kubernetes will reattach automatically
+
+    4. Pod is stuck because of node scheduling issues
+    --> 
+        The pod:
+        Must run where volume can be mounted
+        Must match node selectors / taints
+
+    5. StatefulSet was scaled down incorrectly
+
+    - Never Delete the PVC

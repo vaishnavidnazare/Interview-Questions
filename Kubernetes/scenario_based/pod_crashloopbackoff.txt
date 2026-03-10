@@ -1,0 +1,51 @@
+1. Your pod keeps getting stuck in CrashLoopBackOff, but logs show no errors. How would you approach debugging and resolution?
+Ans: 
+    ## What does CrashLoopBackOff mean?
+
+    It means:
+
+    Kubernetes starts the container
+    The container stops (exits)
+    Kubernetes restarts it
+    This happens again and again
+    After multiple restarts, Kubernetes waits longer before restarting — this waiting is called BackOff.
+
+    👉 Important:
+    CrashLoopBackOff does NOT always mean the app crashed with an error.
+    It only means the container is exiting repeatedly.
+
+    ## Debugging Steps:
+
+    1. Describe the pod and check for the events which actually give us idea on why the container must have stuck.
+    2. Look for exit codes.
+    3. Check what command the container is running, for immediate exits .
+    4. Check memory and cpu limits.
+    5. Understand probes readiness and liveness probes.
+    --> # What is a liveness probe?
+
+        Kubernetes asks:
+        “Are you alive?”
+        If the answer is no, Kubernetes kills and restarts the container.
+
+        # What is a readiness probe?
+
+        Kubernetes asks:
+        “Are you ready to receive traffic?”
+        If the answer is no, traffic is stopped but container is NOT restarted.
+
+        # Common beginner mistake
+
+        Probe runs too early
+        App hasn’t started yet
+        Kubernetes kills it
+
+    6. Debug manually inside the container.
+    --> kubectl run debug --rm -it --image=<same-image> -- sh
+
+        # Check for :
+        1. Missing environment variables
+        2. Missing files
+        3. Permission issues
+        4. ConfigMap file is not mounted
+        5. Secret is missing.
+        
