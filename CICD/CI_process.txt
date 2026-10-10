@@ -1,0 +1,123 @@
+1. Can you walk me through your CI process ?
+Ans: 
+    ```
+# Sample GitLab CI pipeline: Python app -> Docker image -> GitOps deploy
+# Lint/test run on merge requests AND main. Build/scan/deploy run only on main.
+
+stages:
+  - lint
+  - test
+  - build
+  - scan
+  - deploy
+
+# workflow:rules decides WHETHER a pipeline is created at all.
+# Without this, a push to a branch with an open MR creates two pipelines.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+variables:
+  IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA   # tag with commit SHA, not "latest"
+  PIP_CACHE_DIR: $CI_PROJECT_DIR/.cache/pip
+
+default:
+  image: python:3.12-slim
+  tags:
+    - docker            # picks a runner that has this tag
+
+# Cache: speeds up jobs by reusing downloaded dependencies between pipelines.
+# The key changes only when requirements.txt changes.
+cache:
+  key:
+    files:
+      - requirements.txt
+  paths:
+    - .cache/pip
+
+lint:
+  stage: lint
+  script:
+    - pip install flake8
+    - flake8 .
+
+unit-test:
+  stage: test
+  script:
+    - pip install -r requirements.txt pytest
+    - pytest --junitxml=report.xml
+  artifacts:               # artifacts pass files to later jobs / show in the MR UI
+    when: always
+    reports:
+      junit: report.xml
+
+build-image:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind       # Docker-in-Docker so we can run docker build
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  cache: []                # no need for pip cache here
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build -t "$IMAGE" .
+    - docker push "$IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+scan-image:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  cache: []
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL "$IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# CI -> CD handoff: update the image tag in the manifests/Helm repo.
+# Argo CD watches that repo and syncs the change to the cluster.
+update-manifests:
+  stage: deploy
+  image: alpine:3.20
+  cache: []
+  before_script:
+    - apk add --no-cache git
+  script:
+    - git clone "https://oauth2:${MANIFESTS_REPO_TOKEN}@gitlab.com/my-org/k8s-manifests.git"
+    - cd k8s-manifests
+    - sed -i "s|tag:.*|tag: ${CI_COMMIT_SHORT_SHA}|" apps/my-app/values.yaml
+    - git config user.email "ci@example.com"
+    - git config user.name "gitlab-ci"
+    - git commit -am "my-app: deploy ${CI_COMMIT_SHORT_SHA}"
+    - git push
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+```
+
+1. workflow.rules => decides weather pipeline exists. It defines the rules that on what event the pipeline triggers, on a MR/A push to a branch.
+2. Job Rules => decides rules for jobs that on what event pipeline triggers for it.
+3. How runners work?
+=> A runner is the machine or process that actually executes your jobs. GitLab itself only schedules them.
+Runners can be shared (provided by GitLab or your platform team), or project/group runners that your team registers.
+A runner has an executor that decides how jobs run. The most common are docker (each job runs in a fresh container, using the image: you specify) and kubernetes (each job runs as a pod).
+Tags match jobs to runners. tags: [docker] means only a runner with that tag will pick up the job.
+
+4. How caching works?
+=> Each job starts in a clean environment, so without a cache every job re-downloads dependencies.
+Cache stores files like .cache/pip or node_modules and restores them in later jobs and pipelines. The key decides when the cache is reused. In the sample the key is based on requirements.txt, so it only changes when dependencies change.
+Cache is best-effort. A job must still work if the cache is missing.
+Cache vs artifacts is a very common question:
+    Cache is for speed, such as dependencies. It's not guaranteed to be there.
+    Artifacts are outputs of a job (test reports, built files) that are guaranteed to pass to later jobs and can be downloaded.
+
+
+Our CI runs on GitLab. Merge requests run lint and tests for fast feedback. After merge to main, it builds a Docker image tagged with the commit SHA, scans it, pushes it to the registry, and updates the image tag in the manifests repo. Argo CD picks up that change and deploys it, so CI never touches the cluster directly.

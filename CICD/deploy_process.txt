@@ -1,0 +1,22 @@
+1. Can you walk me through the Deployment process ?
+Ans:
+
+"We follow a GitOps approach, so deployment is driven by Git rather than by someone running commands against the cluster. I'll walk through it end to end.
+
+1. The handoff from CI. After CI builds and pushes the image, tagged with the commit SHA, we update the image tag in the k8s manifests repo. That commit is the deployment trigger, so every deploy is a Git change we can review and trace.
+
+2. Argo CD picks it up. Argo CD watches that repo and compares the desired state in Git with the live state in the cluster. When it sees a difference, it shows the app out of sync with teh diff which we can sync after review. We use the 'App of Apps' pattern, where one parent application manages many child applications, so a whole environment can be managed consistently.
+
+3. Rollout on Kubernetes. The Deployment uses a rolling update, so new pods come up and pass readiness probes before old pods are removed. That gives us zero or minimal downtime. Resource requests and limits and health probes are defined in the manifest.
+
+4. Environment promotion. Changes go through lower environments first and then to production. Lower environments can auto-sync, while production gets more control, like reviewed merges to the manifests repo.
+
+5. Post-deploy verification. After the sync, I check that pods are healthy and watch Prometheus metrics and Grafana dashboards for error rates, latency and restarts. If something looks wrong, we use logs and metrics to find the cause.
+
+6. Rollback. If a release is bad, the cleanest rollback is reverting the commit in the manifests repo, and Argo CD syncs the cluster back to the previous version. That keeps Git as the source of truth.
+
+
+2. How do you Integrate ArgoCD for the deployment ?
+Ans: 
+
+    
